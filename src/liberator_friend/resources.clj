@@ -176,8 +176,8 @@
 
 ;; ## The Good Stuff
 
-(def guru-base
-  "Base for all guru resources.
+(def base-resource
+  "Base for all resources.
 
    Due to the way liberator's resources merge, these base definitions
    define a bunch of content types, even if the resources that inherit
@@ -219,7 +219,7 @@
   "Base resource that will handle authentication via friend's
   mechanisms. Provide an authorization function and you'll be good to
   go."
-  {:base guru-base
+  {:base base-resource
    :handle-unauthorized
    (media-typed {"text/html" (fn [req]
                                (unauthorized!
@@ -233,7 +233,7 @@
 ;; ## Base Resources
 ;;
 ;; These functions and vars provide base resources that make it easier
-;; to define new liberator resources within the paddleguru codebase.
+;; to define new liberator resources.
 
 (defn friend-auth
   "Returns a base resource that authenticates using the supplied
@@ -246,19 +246,9 @@
   "Returns a base resource that authenticates users against the
   supplied set of roles."
   [role-input]
-  (friend-auth (roles role-input)))
+  (friend-auth (comp (roles role-input) :request)))
 
 (def authenticated-base
   "Returns a base resource that authenticates users against the
   supplied set of roles."
   (friend-auth (comp boolean friend/identity :request)))
-
-(def user-resource
-  "Base resource that guarantees the supplied resource will be
-   authenticated against regatta admins only."
-  (role-auth #{::user/super-admin}))
-
-(def super-admin-resource
-  "Base resource that guarantees the supplied resource will be
-   authenticated against super admins only."
-  (role-auth #{::user/super-admin}))

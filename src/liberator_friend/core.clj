@@ -1,65 +1,67 @@
 (ns liberator-friend.core
+  "Core namespace for the liberator-friend post."
   (:gen-class)
-  (:require [liberator-friend.misc :as misc]
-            [liberator-friend.middleware.auth :as auth]
-            (compojure handler [route :as route])
+  (:require [cemerick.friend.credentials :as creds]
+            [compojure.handler :refer [api]]
             [compojure.core :as compojure :refer (GET defroutes)]
-            [hiccup.core :as h]
-            [hiccup.element :as e]
+            [liberator-friend.middleware.auth :as auth]
+            [liberator-friend.resources :as r :refer [defresource]]
             [org.httpkit.server :refer [run-server]]
-            [ring.middleware.reload :as rl]
-            [ring.middleware.resource :refer [wrap-resource]]))
+            [ring.middleware.reload :as rl]))
 
-(defn- demo-vars
-  [ns]
-  {:namespace ns
-   :ns-name (ns-name ns)
-   :name (-> ns meta :name)
-   :doc (-> ns meta :doc)
-   :route-prefix (misc/ns->context ns)
-   :app (ns-resolve ns 'app)
-   :page (ns-resolve ns 'page)})
+;; ## "The Database"
 
-(defroutes landing
-  (GET "/admin" [] "Hi!")
-  (GET "/user" [] "Available to the user only!")
-  (GET "/" req (h/html [:html
-                        misc/pretty-head
-                        (misc/pretty-body
-                         [:h1 {:style "margin-bottom:0px"}
-                          [:a {:href "http://github.com/cemerick/friend-demo"} "Among Friends"]]
-                         [:p {:style "margin-top:0px"} "…a collection of demonstration apps using "
-                          (e/link-to "http://github.com/cemerick/friend" "Friend")
-                          ", an authentication and authorization library for securing Clojure web services and applications."]
-                         [:p "Implementing authentication and authorization for your web apps is generally a
-necessary but not particularly pleasant task, even if you are using Clojure.
-Friend makes it relatively easy and relatively painless, but I thought the
-examples that the project's documentation demanded deserved a better forum than
-to bit-rot in a markdown file or somesuch. So, what better than a bunch of live
-demos of each authentication workflow that Friend supports (or is available via
-another library that builds on top of Friend), with smatterings of
-authorization examples here and there, all with links to the
-generally-less-than-10-lines of code that makes it happen?"]
-                         [:p "Check out the demos, find the one(s) that apply to your situation, and
-click the button on the right to go straight to the source for that demo."])])))
+(def users
+  "dummy in-memory user database."
+  {"root" {:username "root"
+           :password (creds/hash-bcrypt "admin_password")
+           :roles #{:admin}}
+   "jane" {:username "jane"
+           :password (creds/hash-bcrypt "user_password")
+           :roles #{:user}}})
 
-(defn- wrap-app-metadata
-  [h app-metadata]
-  (fn [req] (h (assoc req :demo app-metadata))))
+;; ## Site Resources
+
+(defresource admin-resource
+  :base (r/role-auth #{:admin})
+  :allowed-methods [:get]
+  :available-media-types ["text/plain"]
+  :handle-ok "Welcome, admin!")
+
+(defresource user-resource
+  :base (r/role-auth #{:user})
+  :allowed-methods [:get]
+  :available-media-types ["text/plain"]
+  :handle-ok "Welcome, user!")
+
+(defresource authenticated-resource
+  :base r/authenticated-base
+  :allowed-methods [:get]
+  :available-media-types ["text/plain"]
+  :handle-ok "Come on in. You're authenticated.")
+
+;; ## Compojure Routes
+
+(defroutes site-routes
+  (GET "/" [] "Welcome to the liberator-friend demo site!")
+  (GET "/admin" [] admin-resource)
+  (GET "/authenticated" [] authenticated-resource)
+  (GET "/user" [] user-resource))
 
 (def site
-  (-> landing
-      (auth/friend-middleware)))
+  "Main handler for the example Compojure site."
+  (-> site-routes
+      (auth/friend-middleware users)
+      (api)))
+
+;; ## Server Lifecycle
 
 (defonce server (atom nil))
 
 (defn kill! []
   (swap! server (fn [s] (when s (s) nil))))
 
-(defn -main
-  "Main entry point. You can provide a string-based env map that will
-   override the config specified in your env, if you like."
-  []
+(defn -main []
   (swap! server
          (fn [s]
            (if s
@@ -67,9 +69,13 @@ click the button on the right to go straight to the source for that demo."])])))
              (do (println "Booting server on port 8090.")
                  (run-server (rl/wrap-reload #'site) {}))))))
 
-(defn running? []
+(defn running?
+  "Returns true if the server is currently running, false otherwise."
+  []
   (identity @server))
 
-(defn cycle! []
+(defn cycle!
+  "Cycles the existing server - shut down the relaunch."
+  []
   (kill!)
   (-main))
