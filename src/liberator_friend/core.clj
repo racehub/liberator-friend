@@ -75,7 +75,7 @@
   (identity @server))
 
 (defn cycle!
-  "Cycles the existing server - shut down the relaunch."
+  "Cycles the existing server - shut down then relaunch."
   []
   (kill!)
   (-main))
